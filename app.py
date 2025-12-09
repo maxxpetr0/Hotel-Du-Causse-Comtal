@@ -119,8 +119,9 @@ with tab1:
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.write(f"**Plateforme :** {data.get('platform')}")
+                    st.write(f"**Type hébergement :** {data.get('type_hebergement') or 'Non détecté'}")
                     st.write(f"**Tarif :** {data.get('tarif')}")
-                    st.write(f"**VAD :** {data.get('vad')}")
+                    st.write(f"**VAD (Payline) :** {data.get('vad')}")
                     st.write(f"**Commission :** {data.get('commission')}")
                     st.write(f"**Réf. réservation :** {data.get('reservation_id')}")
                 with col_b:
@@ -128,6 +129,12 @@ with tab1:
                     st.write(f"**Date d'arrivée :** {data.get('dates_arrivee')}")
                     st.write(f"**Date de départ :** {data.get('dates_depart')}")
                     st.write(f"**Détails séjour :** {data.get('sejour_details')}")
+                    if data.get('is_virtual_card'):
+                        st.write("**Carte virtuelle :** Oui (Expedia VirtualCard)")
+                
+                if data.get('recapitulatif'):
+                    st.write("**Récapitulatif des activités :**")
+                    st.code(data.get('recapitulatif'), language=None)
         else:
             st.info("Le résumé apparaîtra ici après avoir cliqué sur 'Générer le résumé'")
 

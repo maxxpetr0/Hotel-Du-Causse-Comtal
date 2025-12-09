@@ -1,215 +1,252 @@
 from datetime import datetime
 
 TEMPLATES = {
-    'standard': {
-        'name': 'Standard',
-        'description': 'Format classique pour PMS'
+    'weekendesk': {
+        'name': 'Weekendesk',
+        'description': 'Format pour réservations Weekendesk avec récapitulatif des activités'
     },
-    'compact': {
-        'name': 'Compact',
-        'description': 'Format condensé sur moins de lignes'
+    'expedia': {
+        'name': 'Expedia / Egencia',
+        'description': 'Format pour réservations Expedia avec logique carte virtuelle'
     },
-    'detailed': {
-        'name': 'Détaillé',
-        'description': 'Format complet avec toutes les informations'
+    'direct': {
+        'name': 'Réservation Directe',
+        'description': 'Format pour réservations directes avec garantie CB'
     },
-    'pms_simple': {
-        'name': 'PMS Simple',
-        'description': 'Format simplifié pour saisie rapide'
+    'booking': {
+        'name': 'Booking.com',
+        'description': 'Format pour réservations Booking.com'
+    },
+    'originals': {
+        'name': 'The Originals',
+        'description': 'Format pour réservations The Originals'
+    },
+    'airbnb': {
+        'name': 'Airbnb',
+        'description': 'Format pour réservations Airbnb'
     }
 }
 
-def format_price(price):
-    """Format price with French locale (comma as decimal separator)."""
+def format_price_eur(price):
+    """Format price as X.XX EUR."""
     if price is None:
-        return "Non trouvé"
-    return f"{price:,.2f}".replace(',', ' ').replace('.', ',').replace(' ', ' ') + " €"
+        return "[Non trouvé]"
+    return f"{price:.2f} EUR"
 
-def generate_standard(data, receptionist_name):
-    """Generate the standard summary format."""
+def generate_weekendesk(data, receptionist_name):
+    """
+    Format Weekendesk exact :
+    Weekendesk
+    [TYPE_HEBERGEMENT]
+    Total : [PRIX_CLIENT] EUR
+    Payline : [MONTANT_WEEKENDESK] EUR
+    Commission : [COMMISSION] EUR
+    [RECAPITULATIF avec dates et bullets]
+    Encaisser TDS + Extras
+    [Réceptionniste], le [DATE_DU_JOUR]
+    """
     today = datetime.now().strftime("%d/%m/%Y")
-    platform = data.get('platform', 'OTA')
     
-    lines = [platform]
+    lines = ["Weekendesk"]
     
-    if data.get('tarif') is not None:
-        lines.append(f"Tarif : {format_price(data['tarif'])}")
+    type_heb = data.get('type_hebergement')
+    if type_heb:
+        lines.append(type_heb)
     else:
-        lines.append("Tarif : Non trouvé")
+        lines.append("[Type d'hébergement non détecté]")
     
-    if data.get('vad') is not None:
-        lines.append(f"VAD : {format_price(data['vad'])}")
+    tarif = data.get('tarif')
+    vad = data.get('vad')
+    commission = data.get('commission')
+    
+    lines.append(f"Total : {format_price_eur(tarif)}")
+    lines.append(f"Payline : {format_price_eur(vad)}")
+    lines.append(f"Commission : {format_price_eur(commission)}")
+    
+    recapitulatif = data.get('recapitulatif')
+    if recapitulatif:
+        lines.append(recapitulatif)
     else:
-        lines.append("VAD : Non trouvé")
+        if data.get('dates_arrivee') and data.get('dates_depart'):
+            lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
+        if data.get('sejour_details'):
+            lines.append(data['sejour_details'])
     
-    if data.get('commission') is not None:
-        lines.append(f"Commission : {format_price(data['commission'])}")
+    lines.append("Encaisser TDS + Extras")
+    lines.append(f"{receptionist_name}, le {today}")
+    
+    return "\n".join(lines)
+
+def generate_expedia(data, receptionist_name):
+    """
+    Format Expedia :
+    EXPEDIA
+    [TYPE_CHAMBRE]
+    [Logique paiement conditionnelle]
+    [Réceptionniste], le [DATE_DU_JOUR]
+    
+    Logique paiement :
+    - Si carte virtuelle Expedia : "Faire Payline [PRIX] + Encaisser TDS et Extras"
+    - Sinon : "Encaisser la totalité"
+    """
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    lines = ["EXPEDIA"]
+    
+    type_ch = data.get('type_chambre')
+    if type_ch:
+        lines.append(type_ch)
     else:
-        lines.append("Commission : Non calculable")
+        lines.append("[Type de chambre non détecté]")
     
-    lines.append(f"{receptionist_name} + {today}")
-    lines.append("--")
+    is_virtual_card = data.get('is_virtual_card', False)
+    tarif = data.get('tarif')
+    
+    if is_virtual_card and tarif is not None:
+        lines.append(f"Faire Payline {format_price_eur(tarif)} + Encaisser TDS et Extras")
+    elif is_virtual_card:
+        lines.append("Faire Payline [Montant non trouvé] + Encaisser TDS et Extras")
+    else:
+        lines.append("Encaisser la totalité")
+    
+    lines.append(f"{receptionist_name}, le {today}")
+    
+    return "\n".join(lines)
+
+def generate_direct(data, receptionist_name):
+    """
+    Format Réservation Directe :
+    Réservation Directe (Garantie CB)
+    [TYPE_CHAMBRE]
+    Encaisser la totalité ([PRIX_TOTAL_TTC]) + TDS + Extras
+    [Réceptionniste], le [DATE_DU_JOUR]
+    """
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    lines = ["Réservation Directe (Garantie CB)"]
+    
+    type_ch = data.get('type_chambre')
+    if type_ch:
+        lines.append(type_ch)
+    else:
+        lines.append("[Type de chambre non détecté]")
+    
+    tarif = data.get('tarif')
+    if tarif is not None:
+        lines.append(f"Encaisser la totalité ({format_price_eur(tarif)}) + TDS + Extras")
+    else:
+        lines.append("Encaisser la totalité + TDS + Extras")
+    
+    lines.append(f"{receptionist_name}, le {today}")
+    
+    return "\n".join(lines)
+
+def generate_booking(data, receptionist_name):
+    """Format Booking.com."""
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    lines = ["Booking.com"]
+    
+    if data.get('type_chambre'):
+        lines.append(data['type_chambre'])
+    
+    tarif = data.get('tarif')
+    commission = data.get('commission')
+    vad = data.get('vad')
+    
+    lines.append(f"Total : {format_price_eur(tarif)}")
+    if vad:
+        lines.append(f"Net : {format_price_eur(vad)}")
+    if commission:
+        lines.append(f"Commission : {format_price_eur(commission)}")
     
     if data.get('guest_name'):
         lines.append(f"Client : {data['guest_name']}")
     
-    if data.get('reservation_id'):
-        lines.append(f"Réf : {data['reservation_id']}")
+    if data.get('dates_arrivee') and data.get('dates_depart'):
+        lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
     
-    if data.get('dates_arrivee') or data.get('dates_depart'):
-        if data.get('dates_arrivee') and data.get('dates_depart'):
-            lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
-        elif data.get('dates_arrivee'):
-            lines.append(f"Arrivée : {data['dates_arrivee']}")
-        elif data.get('dates_depart'):
-            lines.append(f"Départ : {data['dates_depart']}")
+    lines.append("Encaisser TDS + Extras")
+    lines.append(f"{receptionist_name}, le {today}")
+    
+    return "\n".join(lines)
+
+def generate_originals(data, receptionist_name):
+    """Format The Originals."""
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    lines = ["The Originals"]
+    
+    if data.get('type_chambre'):
+        lines.append(data['type_chambre'])
+    
+    tarif = data.get('tarif')
+    lines.append(f"Total : {format_price_eur(tarif)}")
     
     if data.get('sejour_details'):
         lines.append(data['sejour_details'])
     
-    lines.append("--")
-    
-    if data.get('raw_tarif_line'):
-        lines.append(data['raw_tarif_line'])
-    elif data.get('tarif') is not None:
-        lines.append(f"Prix client : {data['tarif']:.2f} EUR")
-    
-    if data.get('raw_vad_line'):
-        lines.append(data['raw_vad_line'])
-    elif data.get('vad') is not None:
-        lines.append(f"Versement établissement : {data['vad']:.2f} EUR")
-    
-    if data.get('carte_bancaire'):
-        lines.append("")
-        lines.append("Carte Bancaire Virtuelle :")
-        lines.append(data['carte_bancaire'])
-    
-    return "\n".join(lines)
-
-def generate_compact(data, receptionist_name):
-    """Generate compact summary format."""
-    today = datetime.now().strftime("%d/%m/%Y")
-    platform = data.get('platform', 'OTA')
-    
-    lines = []
-    
-    tarif_str = format_price(data.get('tarif')) if data.get('tarif') else "?"
-    vad_str = format_price(data.get('vad')) if data.get('vad') else "?"
-    comm_str = format_price(data.get('commission')) if data.get('commission') is not None else "?"
-    
-    lines.append(f"{platform} | {tarif_str} | VAD: {vad_str} | Com: {comm_str}")
-    
-    client = data.get('guest_name', '')
-    ref = data.get('reservation_id', '')
-    if client or ref:
-        lines.append(f"{client} - Réf: {ref}" if client and ref else (client or f"Réf: {ref}"))
-    
-    dates = ""
     if data.get('dates_arrivee') and data.get('dates_depart'):
-        dates = f"{data['dates_arrivee']} → {data['dates_depart']}"
-    elif data.get('dates_arrivee'):
-        dates = f"Arr: {data['dates_arrivee']}"
+        lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
     
-    sejour = data.get('sejour_details', '')
-    if dates or sejour:
-        lines.append(f"{dates} | {sejour}" if dates and sejour else (dates or sejour))
-    
-    lines.append(f"[{receptionist_name} - {today}]")
+    lines.append("Encaisser la totalité + TDS + Extras")
+    lines.append(f"{receptionist_name}, le {today}")
     
     return "\n".join(lines)
 
-def generate_detailed(data, receptionist_name):
-    """Generate detailed summary format with all information."""
+def generate_airbnb(data, receptionist_name):
+    """Format Airbnb."""
     today = datetime.now().strftime("%d/%m/%Y")
-    platform = data.get('platform', 'OTA')
     
-    lines = [
-        "═" * 40,
-        f"RÉSERVATION {platform.upper()}",
-        "═" * 40,
-        ""
-    ]
+    lines = ["Airbnb"]
     
-    lines.append("📊 TARIFICATION")
-    lines.append("-" * 20)
-    lines.append(f"  Tarif client    : {format_price(data.get('tarif'))}")
-    lines.append(f"  VAD             : {format_price(data.get('vad'))}")
-    lines.append(f"  Commission      : {format_price(data.get('commission')) if data.get('commission') is not None else 'Non calculable'}")
-    lines.append("")
+    tarif = data.get('tarif')
+    vad = data.get('vad')
+    commission = data.get('commission')
     
-    lines.append("👤 CLIENT")
-    lines.append("-" * 20)
-    lines.append(f"  Nom             : {data.get('guest_name', 'Non renseigné')}")
-    lines.append(f"  Réf. réservation: {data.get('reservation_id', 'Non renseignée')}")
-    lines.append("")
-    
-    lines.append("📅 SÉJOUR")
-    lines.append("-" * 20)
-    lines.append(f"  Arrivée         : {data.get('dates_arrivee', 'Non renseignée')}")
-    lines.append(f"  Départ          : {data.get('dates_depart', 'Non renseignée')}")
-    lines.append(f"  Détails         : {data.get('sejour_details', 'Non renseignés')}")
-    lines.append("")
-    
-    if data.get('carte_bancaire'):
-        lines.append("💳 CARTE BANCAIRE")
-        lines.append("-" * 20)
-        lines.append(f"  {data['carte_bancaire']}")
-        lines.append("")
-    
-    if data.get('raw_tarif_line') or data.get('raw_vad_line'):
-        lines.append("📝 LIGNES ORIGINALES")
-        lines.append("-" * 20)
-        if data.get('raw_tarif_line'):
-            lines.append(f"  {data['raw_tarif_line']}")
-        if data.get('raw_vad_line'):
-            lines.append(f"  {data['raw_vad_line']}")
-        lines.append("")
-    
-    lines.append("═" * 40)
-    lines.append(f"Traité par: {receptionist_name}")
-    lines.append(f"Date: {today}")
-    lines.append("═" * 40)
-    
-    return "\n".join(lines)
-
-def generate_pms_simple(data, receptionist_name):
-    """Generate simple PMS format for quick entry."""
-    today = datetime.now().strftime("%d/%m/%Y")
-    platform = data.get('platform', 'OTA')
-    
-    lines = []
-    
-    lines.append(f"[{platform}]")
-    
-    tarif = f"{data['tarif']:.2f}" if data.get('tarif') else "0.00"
-    vad = f"{data['vad']:.2f}" if data.get('vad') else "0.00"
-    comm = f"{data['commission']:.2f}" if data.get('commission') is not None else "0.00"
-    
-    lines.append(f"T:{tarif} V:{vad} C:{comm}")
+    lines.append(f"Total voyageur : {format_price_eur(tarif)}")
+    lines.append(f"Versement hôte : {format_price_eur(vad)}")
+    if commission:
+        lines.append(f"Frais Airbnb : {format_price_eur(commission)}")
     
     if data.get('guest_name'):
-        lines.append(data['guest_name'])
-    
-    if data.get('reservation_id'):
-        lines.append(f"#{data['reservation_id']}")
+        lines.append(f"Voyageur : {data['guest_name']}")
     
     if data.get('dates_arrivee') and data.get('dates_depart'):
-        lines.append(f"{data['dates_arrivee']}-{data['dates_depart']}")
+        lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
     
-    lines.append(f"{receptionist_name}/{today}")
+    lines.append("Paiement via Airbnb")
+    lines.append(f"{receptionist_name}, le {today}")
     
     return "\n".join(lines)
 
 TEMPLATE_GENERATORS = {
-    'standard': generate_standard,
-    'compact': generate_compact,
-    'detailed': generate_detailed,
-    'pms_simple': generate_pms_simple
+    'weekendesk': generate_weekendesk,
+    'expedia': generate_expedia,
+    'direct': generate_direct,
+    'booking': generate_booking,
+    'originals': generate_originals,
+    'airbnb': generate_airbnb
 }
 
-def generate_summary_with_template(data, receptionist_name, template_id='standard'):
-    """Generate summary using specified template."""
-    generator = TEMPLATE_GENERATORS.get(template_id, generate_standard)
+def generate_summary_with_template(data, receptionist_name, template_id=None):
+    """Generate summary using the appropriate template based on platform."""
+    if template_id is None:
+        platform = data.get('platform', '').lower()
+        if 'weekendesk' in platform:
+            template_id = 'weekendesk'
+        elif 'expedia' in platform:
+            template_id = 'expedia'
+        elif 'booking' in platform:
+            template_id = 'booking'
+        elif 'originals' in platform:
+            template_id = 'originals'
+        elif 'airbnb' in platform:
+            template_id = 'airbnb'
+        else:
+            template_id = 'direct'
+    
+    generator = TEMPLATE_GENERATORS.get(template_id, generate_direct)
     return generator(data, receptionist_name)
 
 def get_template_list():

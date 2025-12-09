@@ -72,6 +72,11 @@ OTA_PLATFORMS = {
         'name': 'Airbnb',
         'keywords': ['airbnb', 'air bnb'],
         'priority': 5
+    },
+    'direct': {
+        'name': 'Réservation Directe',
+        'keywords': [],
+        'priority': 99
     }
 }
 
@@ -90,7 +95,69 @@ def detect_platform(email_text):
         detected.sort(key=lambda x: x[1])
         return detected[0][0]
     
-    return 'weekendesk'
+    return 'direct'
+
+def extract_weekendesk_recapitulatif(email_text):
+    """
+    Extract the activity recap block from Weekendesk emails.
+    The recap is between "externe à votre établissement" and "Prix établissement payé par le client"
+    """
+    patterns = [
+        r'externe[s]?\s+[àa]\s+votre\s+[eé]tablissement\)?(.+?)Prix\s+[eé]tablissement\s+pay[eé]\s+par\s+le\s+client',
+        r'R[eé]capitulatif\s+des\s+activit[eé]s(.+?)Prix\s+[eé]tablissement',
+        r'(\d{1,2}/\d{1,2}/\d{4}\s*\n(?:[\s\S]*?(?:\n\d{1,2}/\d{1,2}/\d{4}[\s\S]*?)*)?)(?=\s*Prix\s+[eé]tablissement|\s*$)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, email_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            recap = match.group(1).strip()
+            lines = []
+            current_date = None
+            
+            for line in recap.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                date_match = re.match(r'^(\d{1,2}/\d{1,2}/\d{4})$', line)
+                if date_match:
+                    current_date = date_match.group(1)
+                    lines.append(current_date)
+                elif line and not line.startswith('•'):
+                    if re.match(r'^[\d\w]', line) and not re.match(r'^\d{1,2}/\d{1,2}/', line):
+                        lines.append(f"• {line}")
+                    else:
+                        lines.append(line)
+                else:
+                    lines.append(line)
+            
+            return '\n'.join(lines)
+    
+    date_block_pattern = r'(\d{1,2}/\d{1,2}/\d{4}[\s\S]*?)(?=Prix\s+[eé]tablissement|Montant\s+pay[eé]|$)'
+    match = re.search(date_block_pattern, email_text, re.IGNORECASE)
+    if match:
+        return format_recap_block(match.group(1).strip())
+    
+    return None
+
+def format_recap_block(text):
+    """Format the recap block with proper bullets and dates."""
+    lines = []
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        
+        if re.match(r'^\d{1,2}/\d{1,2}/\d{4}$', line):
+            lines.append(line)
+        elif line and not line.startswith('•') and not line.startswith('-'):
+            if not re.match(r'^(Prix|Montant|Total|EUR|€)', line, re.IGNORECASE):
+                lines.append(f"• {line}")
+        else:
+            lines.append(line.replace('-', '•', 1) if line.startswith('-') else line)
+    
+    return '\n'.join(lines)
 
 def parse_weekendesk(email_text):
     """Parse Weekendesk reservation emails."""
@@ -99,14 +166,16 @@ def parse_weekendesk(email_text):
         'tarif': None,
         'vad': None,
         'commission': None,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
         'sejour_details': None,
         'dates_arrivee': None,
         'dates_depart': None,
         'carte_bancaire': None,
         'guest_name': None,
         'reservation_id': None,
-        'raw_tarif_line': None,
-        'raw_vad_line': None
+        'is_virtual_card': False
     }
     
     tarif_patterns = [
@@ -129,12 +198,16 @@ def parse_weekendesk(email_text):
     if result['tarif'] is not None and result['vad'] is not None:
         result['commission'] = round(result['tarif'] - result['vad'], 2)
     
-    sejour_patterns = [
-        r'S[eé]jour\s*[:\-]?\s*(.+?)(?:\n|$)',
-        r'(\d+\s*nuits?\s+en\s+.+?)(?:\n|$)',
-        r'(\d+\s*nuits?\s+.+?chambre.+?)(?:\n|$)',
+    hebergement_patterns = [
+        r'(?:Type\s+(?:d[\'e]\s*)?(?:h[eé]bergement|chambre|logement))\s*[:\-]?\s*([^\n]+)',
+        r'(?:Chambre|Suite|Room)\s*[:\-]?\s*([^\n]+)',
+        r'([A-Za-z\s]+(?:Suite|Chambre|Room|Double|Single|Twin)[^\n]*)',
     ]
-    result['sejour_details'] = extract_text(email_text, sejour_patterns)
+    type_heb = extract_text(email_text, hebergement_patterns)
+    result['type_hebergement'] = type_heb
+    result['type_chambre'] = type_heb
+    
+    result['recapitulatif'] = extract_weekendesk_recapitulatif(email_text)
     
     date_arrivee_patterns = [
         r'(?:Date\s+d[\'\u2019])?[Aa]rriv[eé]e\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
@@ -150,13 +223,6 @@ def parse_weekendesk(email_text):
     ]
     result['dates_depart'] = extract_text(email_text, date_depart_patterns)
     
-    cb_patterns = [
-        r'((?:Carte\s+(?:bancaire\s+)?virtuelle|VCC|Virtual\s+Card)[:\s]*[\s\S]*?(?:CVV|CVC|Code)[:\s]*\d{3,4})',
-        r'(N(?:um[eé]ro|°)\s*(?:de\s+)?carte\s*[:\-]?\s*[\d\s\*]+[\s\S]*?(?:CVV|CVC|Code)[:\s]*\d{3,4})',
-        r'(Carte\s*[:\-]?\s*\d{4}[\s\*\-]+\d{4}[\s\*\-]+\d{4}[\s\*\-]+\d{4}[\s\S]*?(?:Expiration|Exp|Valid)[:\s]*[\d\/]+)',
-    ]
-    result['carte_bancaire'] = extract_text(email_text, cb_patterns)
-    
     guest_patterns = [
         r'(?:Client|Voyageur|Guest|Nom)\s*[:\-]?\s*([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)',
         r'M(?:me|r|lle)?\.?\s+([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)',
@@ -169,15 +235,150 @@ def parse_weekendesk(email_text):
     ]
     result['reservation_id'] = extract_text(email_text, reservation_patterns)
     
-    tarif_line_patterns = [
-        r'(Prix\s+[eé]tablissement\s+pay[eé]\s+par\s+le\s+client\s*[:\-]?\s*[\d\s,\.]+\s*(?:EUR|€))',
-    ]
-    result['raw_tarif_line'] = extract_text(email_text, tarif_line_patterns)
+    return result
+
+def parse_expedia(email_text):
+    """Parse Expedia reservation emails with virtual card detection."""
+    result = {
+        'platform': 'Expedia',
+        'tarif': None,
+        'vad': None,
+        'commission': None,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
+        'sejour_details': None,
+        'dates_arrivee': None,
+        'dates_depart': None,
+        'carte_bancaire': None,
+        'guest_name': None,
+        'reservation_id': None,
+        'is_virtual_card': False,
+        'card_holder_name': None
+    }
     
-    vad_line_patterns = [
-        r'(Montant\s+pay[eé]\s+par\s+Weekendesk\s+[àa]\s+l[\'\u2019][eé]tablissement\s*(?:\(TTC\))?\s*[:\-]?\s*[\d\s,\.]+\s*(?:EUR|€))',
+    tarif_patterns = [
+        r'Prix\s+total\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'Total\s*[:\-]?\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'(\d+[\d\s,\.]*)\s*EUR\s*$',
     ]
-    result['raw_vad_line'] = extract_text(email_text, vad_line_patterns)
+    result['tarif'] = extract_price(email_text, tarif_patterns)
+    result['vad'] = result['tarif']
+    
+    chambre_patterns = [
+        r'Type\s+de\s+chambre\s*[:\-]?\s*([^\n]+)',
+        r'(?:Chambre|Room)\s*[:\-]?\s*([^\n]+)',
+    ]
+    type_ch = extract_text(email_text, chambre_patterns)
+    result['type_chambre'] = type_ch
+    result['type_hebergement'] = type_ch
+    
+    card_holder_patterns = [
+        r'Nom\s+du\s+d[eé]tenteur\s*[:\-]?\s*([^\n]+)',
+        r'Cardholder\s*(?:name)?\s*[:\-]?\s*([^\n]+)',
+        r'Card\s+holder\s*[:\-]?\s*([^\n]+)',
+    ]
+    card_holder = extract_text(email_text, card_holder_patterns)
+    result['card_holder_name'] = card_holder
+    
+    if card_holder and 'expedia virtualcard' in card_holder.lower():
+        result['is_virtual_card'] = True
+    elif 'expedia virtual card' in email_text.lower() or 'virtualcard' in email_text.lower():
+        result['is_virtual_card'] = True
+    
+    date_arrivee_patterns = [
+        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
+        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
+        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
+    ]
+    result['dates_arrivee'] = extract_text(email_text, date_arrivee_patterns)
+    
+    date_depart_patterns = [
+        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
+        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
+        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
+    ]
+    result['dates_depart'] = extract_text(email_text, date_depart_patterns)
+    
+    guest_patterns = [
+        r'Information\s+du\s+client\s*([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)',
+        r'^([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)\s*Courriel',
+    ]
+    result['guest_name'] = extract_text(email_text, guest_patterns)
+    
+    reservation_patterns = [
+        r'Numéro\s+de\s+confirmation\s*[:\-]?\s*(\d+)',
+        r'Ref[:\-]?\s*(\d+)',
+    ]
+    result['reservation_id'] = extract_text(email_text, reservation_patterns)
+    
+    nights_pattern = r'Nombre\s+de\s+nuits\s*[:\-]?\s*(\d+)\s*nuit'
+    nights = extract_text(email_text, [nights_pattern])
+    if nights and result['type_chambre']:
+        result['sejour_details'] = f"{nights} nuit(s) en {result['type_chambre']}"
+    elif nights:
+        result['sejour_details'] = f"{nights} nuit(s)"
+    
+    return result
+
+def parse_direct(email_text):
+    """Parse direct reservation emails."""
+    result = {
+        'platform': 'Réservation Directe',
+        'tarif': None,
+        'vad': None,
+        'commission': 0.0,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
+        'sejour_details': None,
+        'dates_arrivee': None,
+        'dates_depart': None,
+        'carte_bancaire': None,
+        'guest_name': None,
+        'reservation_id': None,
+        'is_virtual_card': False
+    }
+    
+    tarif_patterns = [
+        r'Prix\s+total\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'Total\s*[:\-]?\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'Montant\s*[:\-]?\s*([\d\s,\.]+)\s*(?:EUR|€)',
+    ]
+    result['tarif'] = extract_price(email_text, tarif_patterns)
+    result['vad'] = result['tarif']
+    
+    chambre_patterns = [
+        r'Type\s+de\s+chambre\s*[:\-]?\s*([^\n]+)',
+        r'(?:Chambre|Room)\s*[:\-]?\s*([^\n]+)',
+    ]
+    type_ch = extract_text(email_text, chambre_patterns)
+    result['type_chambre'] = type_ch
+    result['type_hebergement'] = type_ch
+    
+    date_arrivee_patterns = [
+        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
+        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
+    ]
+    result['dates_arrivee'] = extract_text(email_text, date_arrivee_patterns)
+    
+    date_depart_patterns = [
+        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
+        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
+    ]
+    result['dates_depart'] = extract_text(email_text, date_depart_patterns)
+    
+    guest_patterns = [
+        r'Information\s+du\s+client\s*([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü]+)',
+        r'^([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü]+)\s*Courriel',
+    ]
+    result['guest_name'] = extract_text(email_text, guest_patterns)
+    
+    reservation_patterns = [
+        r'Numéro\s+de\s+confirmation\s*[:\-]?\s*(\d+)',
+        r'Ref[:\-]?\s*(\d+)',
+    ]
+    result['reservation_id'] = extract_text(email_text, reservation_patterns)
     
     return result
 
@@ -188,14 +389,16 @@ def parse_booking(email_text):
         'tarif': None,
         'vad': None,
         'commission': None,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
         'sejour_details': None,
         'dates_arrivee': None,
         'dates_depart': None,
         'carte_bancaire': None,
         'guest_name': None,
         'reservation_id': None,
-        'raw_tarif_line': None,
-        'raw_vad_line': None
+        'is_virtual_card': False
     }
     
     tarif_patterns = [
@@ -221,11 +424,13 @@ def parse_booking(email_text):
         if result['tarif'] and result['commission']:
             result['vad'] = round(result['tarif'] - result['commission'], 2)
     
-    sejour_patterns = [
-        r'(\d+)\s*(?:nuit|night)s?',
-        r'(\d+\s*x\s*[^,\n]+)',
-        r'(?:Chambre|Room)\s*[:\-]?\s*([^\n]+)',
+    chambre_patterns = [
+        r'(?:Chambre|Room|Type)\s*[:\-]?\s*([^\n]+)',
     ]
+    type_ch = extract_text(email_text, chambre_patterns)
+    result['type_chambre'] = type_ch
+    result['type_hebergement'] = type_ch
+    
     nights_match = extract_text(email_text, [r'(\d+)\s*(?:nuit|night)s?'])
     room_match = extract_text(email_text, [r'(?:Chambre|Room|Type)\s*[:\-]?\s*([^\n]+)'])
     if nights_match and room_match:
@@ -238,7 +443,6 @@ def parse_booking(email_text):
     date_arrivee_patterns = [
         r'(?:Arriv[eé]e|Check[\-\s]?in|From)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
         r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\s*[\-–]\s*\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}',
-        r'(\d{1,2}\s+(?:jan|f[eé]v|mar|avr|mai|juin|juil|ao[uû]|sep|oct|nov|d[eé]c)[a-z]*\s+\d{2,4})',
     ]
     result['dates_arrivee'] = extract_text(email_text, date_arrivee_patterns)
     
@@ -247,12 +451,6 @@ def parse_booking(email_text):
         r'\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s*[\-–]\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
     ]
     result['dates_depart'] = extract_text(email_text, date_depart_patterns)
-    
-    cb_patterns = [
-        r'((?:Carte|Card)[:\s]*[\d\*\s]+[\s\S]*?(?:CVV|CVC|Exp)[:\s]*[\d\/]+)',
-        r'((?:Virtual\s+)?(?:Credit\s+)?Card[:\s]*[\s\S]*?(?:Security|CVV)[:\s]*\d{3,4})',
-    ]
-    result['carte_bancaire'] = extract_text(email_text, cb_patterns)
     
     guest_patterns = [
         r'(?:Guest|Client|Voyageur|Booker)\s*(?:name)?\s*[:\-]?\s*([A-ZÀ-Ü][a-zà-ü]+(?:\s+[A-ZÀ-Ü][a-zà-ü]+)+)',
@@ -268,91 +466,23 @@ def parse_booking(email_text):
     
     return result
 
-def parse_expedia(email_text):
-    """Parse Expedia reservation emails."""
-    result = {
-        'platform': 'Expedia',
-        'tarif': None,
-        'vad': None,
-        'commission': None,
-        'sejour_details': None,
-        'dates_arrivee': None,
-        'dates_depart': None,
-        'carte_bancaire': None,
-        'guest_name': None,
-        'reservation_id': None,
-        'raw_tarif_line': None,
-        'raw_vad_line': None
-    }
-    
-    tarif_patterns = [
-        r'Prix\s+total\s*([\d\s,\.]+)\s*(?:EUR|€)',
-        r'(\d+[\d\s,\.]*)\s*EUR\s*$',
-    ]
-    result['tarif'] = extract_price(email_text, tarif_patterns)
-    result['vad'] = result['tarif']
-    
-    nights_pattern = r'Nombre\s+de\s+nuits\s*[:\-]?\s*(\d+)\s*nuit'
-    room_pattern = r'Type\s+de\s+chambre\s*[:\-]?\s*([^\n]+)'
-    nights = extract_text(email_text, [nights_pattern])
-    room = extract_text(email_text, [room_pattern])
-    if nights and room:
-        result['sejour_details'] = f"{nights} nuit(s) en {room.strip()}"
-    elif nights:
-        result['sejour_details'] = f"{nights} nuit(s)"
-    elif room:
-        result['sejour_details'] = room.strip()
-    
-    date_arrivee_patterns = [
-        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
-        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
-        r"Date\s+d['\u2019]arriv[eé]e\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
-    ]
-    result['dates_arrivee'] = extract_text(email_text, date_arrivee_patterns)
-    
-    date_depart_patterns = [
-        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
-        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
-        r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}\s+\w+,?\s+\d{4})",
-    ]
-    result['dates_depart'] = extract_text(email_text, date_depart_patterns)
-    
-    cb_patterns = [
-        r'Type\s+de\s+carte\s*[:\-]?\s*(\w+)\s*Numéro\s+de\s+carte\s*[:\-]?\s*([\d\*]+)\s*Expiration\s*[:\-]?\s*([^\n]+)\s*Nom\s+du\s+détenteur\s*[:\-]?\s*([^\n]+)',
-    ]
-    cb_match = re.search(cb_patterns[0], email_text, re.IGNORECASE | re.DOTALL)
-    if cb_match:
-        result['carte_bancaire'] = f"{cb_match.group(1)} {cb_match.group(2)} - {cb_match.group(4).strip()}"
-    
-    guest_patterns = [
-        r'Information\s+du\s+client\s*([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)',
-        r'^([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü][a-zà-ü]+)\s*Courriel',
-    ]
-    result['guest_name'] = extract_text(email_text, guest_patterns)
-    
-    reservation_patterns = [
-        r'Numéro\s+de\s+confirmation\s*[:\-]?\s*(\d+)',
-        r'Ref[:\-]?\s*(\d+)',
-    ]
-    result['reservation_id'] = extract_text(email_text, reservation_patterns)
-    
-    return result
-
 def parse_originals(email_text):
     """Parse The Originals direct booking emails."""
     result = {
         'platform': 'The Originals',
         'tarif': None,
         'vad': None,
-        'commission': None,
+        'commission': 0.0,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
         'sejour_details': None,
         'dates_arrivee': None,
         'dates_depart': None,
         'carte_bancaire': None,
         'guest_name': None,
         'reservation_id': None,
-        'raw_tarif_line': None,
-        'raw_vad_line': None
+        'is_virtual_card': False
     }
     
     tarif_patterns = [
@@ -361,20 +491,24 @@ def parse_originals(email_text):
     ]
     result['tarif'] = extract_price(email_text, tarif_patterns)
     result['vad'] = result['tarif']
-    result['commission'] = 0.0
+    
+    chambre_patterns = [
+        r'Type\s+de\s+chambre\s*[:\-]?\s*([^\n]+)',
+    ]
+    type_ch = extract_text(email_text, chambre_patterns)
+    result['type_chambre'] = type_ch
+    result['type_hebergement'] = type_ch
     
     nights_pattern = r'Nombre\s+de\s+nuits\s*[:\-]?\s*(\d+)\s*nuit'
-    room_pattern = r'Type\s+de\s+chambre\s*[:\-]?\s*([^\n]+)'
     tarif_jour_pattern = r'Tarif\s+du\s+jour\s*[:\-]?\s*([^\n]+)'
     nights = extract_text(email_text, [nights_pattern])
-    room = extract_text(email_text, [room_pattern])
     tarif_jour = extract_text(email_text, [tarif_jour_pattern])
     
     details_parts = []
     if nights:
         details_parts.append(f"{nights} nuit(s)")
-    if room:
-        details_parts.append(f"en {room.strip()}")
+    if result['type_chambre']:
+        details_parts.append(f"en {result['type_chambre']}")
     if tarif_jour:
         details_parts.append(f"- {tarif_jour.strip()}")
     result['sejour_details'] = " ".join(details_parts) if details_parts else None
@@ -390,13 +524,6 @@ def parse_originals(email_text):
         r"Date\s+de\s+d[eé]part\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
     ]
     result['dates_depart'] = extract_text(email_text, date_depart_patterns)
-    
-    cb_patterns = [
-        r'Type\s+de\s+carte\s*[:\-]?\s*(\w+)\s*Numéro\s+de\s+carte\s*[:\-]?\s*([\d\*]+)',
-    ]
-    cb_match = re.search(cb_patterns[0], email_text, re.IGNORECASE | re.DOTALL)
-    if cb_match:
-        result['carte_bancaire'] = f"{cb_match.group(1)} {cb_match.group(2)}"
     
     guest_patterns = [
         r'Information\s+du\s+client\s*([A-ZÀ-Ü][a-zà-ü]+\s+[A-ZÀ-Ü]+)',
@@ -419,14 +546,16 @@ def parse_airbnb(email_text):
         'tarif': None,
         'vad': None,
         'commission': None,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
         'sejour_details': None,
         'dates_arrivee': None,
         'dates_depart': None,
         'carte_bancaire': None,
         'guest_name': None,
         'reservation_id': None,
-        'raw_tarif_line': None,
-        'raw_vad_line': None
+        'is_virtual_card': False
     }
     
     tarif_patterns = [
@@ -453,23 +582,17 @@ def parse_airbnb(email_text):
         result['commission'] = service_fee
         result['vad'] = round(result['tarif'] - service_fee, 2)
     
-    sejour_patterns = [
-        r'(\d+)\s*(?:nuit|night)s?',
-        r'(?:Logement|Listing|Property)\s*[:\-]?\s*([^\n]+)',
-    ]
     nights = extract_text(email_text, [r'(\d+)\s*(?:nuit|night)s?'])
     if nights:
         result['sejour_details'] = f"{nights} nuit(s)"
     
     date_arrivee_patterns = [
         r'(?:Arriv[eé]e|Check[\-\s]?in)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
-        r'(\d{1,2}\s+(?:jan|f[eé]v|mar|avr|mai|juin|juil|ao[uû]|sep|oct|nov|d[eé]c)[a-z]*(?:\s+\d{2,4})?)\s*[\-–]',
     ]
     result['dates_arrivee'] = extract_text(email_text, date_arrivee_patterns)
     
     date_depart_patterns = [
         r'(?:D[eé]part|Check[\-\s]?out)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
-        r'[\-–]\s*(\d{1,2}\s+(?:jan|f[eé]v|mar|avr|mai|juin|juil|ao[uû]|sep|oct|nov|d[eé]c)[a-z]*(?:\s+\d{2,4})?)',
     ]
     result['dates_depart'] = extract_text(email_text, date_depart_patterns)
     
@@ -492,6 +615,7 @@ PARSERS = {
     'expedia': parse_expedia,
     'originals': parse_originals,
     'airbnb': parse_airbnb,
+    'direct': parse_direct,
 }
 
 def parse_email(email_text, platform=None):
@@ -499,69 +623,13 @@ def parse_email(email_text, platform=None):
     if platform is None:
         platform = detect_platform(email_text)
     
-    parser = PARSERS.get(platform, parse_weekendesk)
+    parser = PARSERS.get(platform, parse_direct)
     return parser(email_text)
 
 def generate_summary(data, receptionist_name):
-    """Generate the formatted summary for PMS."""
-    today = datetime.now().strftime("%d/%m/%Y")
-    platform = data.get('platform', 'OTA')
-    
-    lines = [platform]
-    
-    if data.get('tarif') is not None:
-        lines.append(f"Tarif : {format_price(data['tarif'])}")
-    else:
-        lines.append("Tarif : Non trouvé")
-    
-    if data.get('vad') is not None:
-        lines.append(f"VAD : {format_price(data['vad'])}")
-    else:
-        lines.append("VAD : Non trouvé")
-    
-    if data.get('commission') is not None:
-        lines.append(f"Commission : {format_price(data['commission'])}")
-    else:
-        lines.append("Commission : Non calculable")
-    
-    lines.append(f"{receptionist_name} + {today}")
-    lines.append("--")
-    
-    if data.get('guest_name'):
-        lines.append(f"Client : {data['guest_name']}")
-    
-    if data.get('reservation_id'):
-        lines.append(f"Réf : {data['reservation_id']}")
-    
-    if data.get('dates_arrivee') or data.get('dates_depart'):
-        if data.get('dates_arrivee') and data.get('dates_depart'):
-            lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
-        elif data.get('dates_arrivee'):
-            lines.append(f"Arrivée : {data['dates_arrivee']}")
-        elif data.get('dates_depart'):
-            lines.append(f"Départ : {data['dates_depart']}")
-    
-    if data.get('sejour_details'):
-        lines.append(data['sejour_details'])
-    
-    lines.append("--")
-    
-    if data.get('raw_tarif_line'):
-        lines.append(data['raw_tarif_line'])
-    elif data.get('tarif') is not None:
-        lines.append(f"Prix client : {data['tarif']:.2f} EUR")
-    
-    if data.get('raw_vad_line'):
-        lines.append(data['raw_vad_line'])
-    elif data.get('vad') is not None:
-        lines.append(f"Versement établissement : {data['vad']:.2f} EUR")
-    
-    if data.get('carte_bancaire'):
-        lines.append("")
-        lines.append("Carte Bancaire Virtuelle :")
-        lines.append(data['carte_bancaire'])
-    
-    return "\n".join(lines)
+    """Generate the formatted summary using templates."""
+    from templates import generate_summary_with_template
+    return generate_summary_with_template(data, receptionist_name)
 
 def get_platform_list():
     """Return list of supported platforms for UI."""
