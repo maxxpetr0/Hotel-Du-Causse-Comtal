@@ -26,15 +26,35 @@ Transformation des exports PMS en tableau formaté pour le CMS marketing.
 - Génération de tableau avec double en-tête pour le CMS
 - Export en TXT (format marketing) et CSV (tableur)
 
+### 3. Back Office (Admin)
+Gestion des utilisateurs et des accès.
+
+**Fonctionnalités :**
+- Création de nouveaux utilisateurs
+- Modification des mots de passe
+- Gestion des droits administrateur
+- Suppression d'utilisateurs
+
+## Authentification
+
+L'application est protégée par un système d'authentification :
+- Premier accès : création du compte administrateur
+- Connexion obligatoire pour accéder aux outils
+- Mots de passe hashés (SHA256 + salt)
+- Session Streamlit pour la gestion des connexions
+- Back Office réservé aux administrateurs
+
 ## Structure du Projet
 
 ```
 /
-├── app.py                    # Application principale avec navigation
+├── app.py                    # Application principale avec navigation et auth
+├── auth.py                   # Module d'authentification
 ├── views/
 │   ├── __init__.py
 │   ├── ota_helper.py        # Page OTA Helper
-│   └── cms_helper.py        # Page CMS Helper
+│   ├── cms_helper.py        # Page CMS Helper
+│   └── backoffice.py        # Page Back Office (admin)
 ├── parsers.py                # Module de parsing des emails OTA
 ├── cms_parser.py             # Module de parsing des données PMS
 ├── templates.py              # Templates de sortie par plateforme OTA
