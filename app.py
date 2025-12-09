@@ -10,14 +10,15 @@ from parsers import (
 from database import init_db, save_summary
 
 st.set_page_config(
-    page_title="OTA Helper",
-    page_icon="🏨",
+    page_title="Hôtel du Causse Comtal - OTA Helper",
+    page_icon="🏰",
     layout="wide"
 )
 
 init_db()
 
-st.title("🏨 OTA Helper")
+st.title("🏰 Hôtel du Causse Comtal")
+st.subheader("Assistant de Réservations OTA")
 st.markdown("Transformez vos emails de réservation en résumés standardisés pour le PMS")
 
 col1, col2 = st.columns(2)
@@ -136,4 +137,4 @@ with col2:
 
 st.markdown("---")
 platforms_supported = ", ".join([cfg['name'] for cfg in OTA_PLATFORMS.values()])
-st.markdown(f"*OTA Helper - Plateformes supportées : {platforms_supported}*")
+st.markdown(f"*Hôtel du Causse Comtal - Plateformes supportées : {platforms_supported}*")
