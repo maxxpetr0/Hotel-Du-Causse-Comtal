@@ -1,7 +1,26 @@
 import os
+import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+
+
+def sanitize_card_numbers(text):
+    """Remove credit card numbers from text to protect sensitive data."""
+    if not text:
+        return text
+    
+    patterns = [
+        r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
+        r'\b\d{15,16}\b',
+        r'\b(?:\d{4}[-\s]?){2}\d{4,6}\b',
+    ]
+    
+    sanitized = text
+    for pattern in patterns:
+        sanitized = re.sub(pattern, '[CARTE MASQUÉE]', sanitized)
+    
+    return sanitized
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
@@ -53,9 +72,13 @@ def init_db():
     conn.close()
 
 def save_summary(data, summary_text, receptionist_name, email_raw):
-    """Save a summary to the database."""
+    """Save a summary to the database. Card numbers are automatically sanitized."""
     conn = get_connection()
     cur = conn.cursor()
+    
+    safe_email_raw = sanitize_card_numbers(email_raw)
+    safe_summary_text = sanitize_card_numbers(summary_text)
+    safe_sejour_details = sanitize_card_numbers(data.get('sejour_details'))
     
     cur.execute('''
         INSERT INTO summaries (
@@ -74,9 +97,9 @@ def save_summary(data, summary_text, receptionist_name, email_raw):
         data.get('commission'),
         data.get('dates_arrivee'),
         data.get('dates_depart'),
-        data.get('sejour_details'),
-        summary_text,
-        email_raw
+        safe_sejour_details,
+        safe_summary_text,
+        safe_email_raw
     ))
     
     result = cur.fetchone()
