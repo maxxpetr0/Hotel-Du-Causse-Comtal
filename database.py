@@ -1,5 +1,6 @@
 import os
 import re
+import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
@@ -67,9 +68,78 @@ def init_db():
         ON summaries(guest_name)
     ''')
     
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(100) UNIQUE NOT NULL,
+            password_hash VARCHAR(256) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE
+        )
+    ''')
+    
     conn.commit()
     cur.close()
     conn.close()
+
+
+def hash_password(password, salt=None):
+    """Hash a password using SHA-256 with salt for security."""
+    if salt is None:
+        salt = os.environ.get('SESSION_SECRET', 'default_salt_ota_helper')
+    salted_password = f"{salt}{password}{salt}"
+    return hashlib.sha256(salted_password.encode()).hexdigest()
+
+
+def register_user(username, password):
+    """Register a new user. Returns True if successful, False if username exists."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute('''
+            INSERT INTO users (username, password_hash)
+            VALUES (%s, %s)
+        ''', (username.strip().lower(), hash_password(password)))
+        conn.commit()
+        success = True
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        success = False
+    
+    cur.close()
+    conn.close()
+    return success
+
+
+def authenticate_user(username, password):
+    """Authenticate a user. Returns user dict if valid, None otherwise."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('''
+        SELECT id, username, is_active FROM users
+        WHERE username = %s AND password_hash = %s AND is_active = TRUE
+    ''', (username.strip().lower(), hash_password(password)))
+    
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    return user
+
+
+def get_user_count():
+    """Get the number of registered users."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    cur.execute('SELECT COUNT(*) FROM users')
+    count = cur.fetchone()[0]
+    
+    cur.close()
+    conn.close()
+    return count
 
 def save_summary(data, summary_text, receptionist_name, email_raw):
     """Save a summary to the database. Card numbers are automatically sanitized."""
