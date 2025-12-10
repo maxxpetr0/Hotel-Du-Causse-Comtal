@@ -24,6 +24,10 @@ TEMPLATES = {
     'airbnb': {
         'name': 'Airbnb',
         'description': 'Format pour réservations Airbnb'
+    },
+    'hrs': {
+        'name': 'HRS',
+        'description': 'Format pour réservations HRS avec carte virtuelle'
     }
 }
 
@@ -220,13 +224,55 @@ def generate_airbnb(data, receptionist_name):
     
     return "\n".join(lines)
 
+def generate_hrs(data, receptionist_name):
+    """
+    Format HRS avec carte virtuelle :
+    HRS
+    [TYPE_CHAMBRE]
+    Total : [PRIX] EUR
+    Faire Payline [PRIX] EUR
+    Du [DATE_ARRIVEE] au [DATE_DEPART]
+    Client : [NOM_CLIENT]
+    [Réceptionniste], le [DATE_DU_JOUR]
+    """
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    lines = ["HRS"]
+    
+    type_ch = data.get('type_chambre')
+    if type_ch:
+        lines.append(type_ch)
+    
+    tarif = data.get('tarif')
+    lines.append(f"Total : {format_price_eur(tarif)}")
+    
+    if data.get('breakfast_included'):
+        lines.append("Petit-déjeuner inclus")
+    
+    if tarif is not None:
+        lines.append(f"Faire Payline {format_price_eur(tarif)}")
+    else:
+        lines.append("Faire Payline [Montant non trouvé]")
+    
+    if data.get('dates_arrivee') and data.get('dates_depart'):
+        lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
+    
+    if data.get('guest_name'):
+        lines.append(f"Client : {data['guest_name']}")
+    
+    lines.append("Encaisser TDS + Extras")
+    lines.append(f"{receptionist_name}, le {today}")
+    
+    return "\n".join(lines)
+
 TEMPLATE_GENERATORS = {
     'weekendesk': generate_weekendesk,
     'expedia': generate_expedia,
     'direct': generate_direct,
     'booking': generate_booking,
     'originals': generate_originals,
-    'airbnb': generate_airbnb
+    'airbnb': generate_airbnb,
+    'hrs': generate_hrs
 }
 
 def generate_summary_with_template(data, receptionist_name, template_id=None):
@@ -243,6 +289,8 @@ def generate_summary_with_template(data, receptionist_name, template_id=None):
             template_id = 'originals'
         elif 'airbnb' in platform:
             template_id = 'airbnb'
+        elif 'hrs' in platform:
+            template_id = 'hrs'
         else:
             template_id = 'direct'
     

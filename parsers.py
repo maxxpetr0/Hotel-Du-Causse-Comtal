@@ -73,6 +73,11 @@ OTA_PLATFORMS = {
         'keywords': ['airbnb', 'air bnb'],
         'priority': 5
     },
+    'hrs': {
+        'name': 'HRS',
+        'keywords': ['hrs', 'hotel reservation service', 'hotelservice.com', 'hrs.com', 'n° hrs', 'processus hrs'],
+        'priority': 6
+    },
     'direct': {
         'name': 'Réservation Directe',
         'keywords': [],
@@ -609,12 +614,102 @@ def parse_airbnb(email_text):
     
     return result
 
+def parse_hrs(email_text):
+    """Parse HRS reservation emails with virtual credit card."""
+    result = {
+        'platform': 'HRS',
+        'tarif': None,
+        'vad': None,
+        'commission': 0.0,
+        'type_hebergement': None,
+        'type_chambre': None,
+        'recapitulatif': None,
+        'sejour_details': None,
+        'dates_arrivee': None,
+        'dates_depart': None,
+        'carte_bancaire': None,
+        'guest_name': None,
+        'reservation_id': None,
+        'is_virtual_card': True,
+        'hrs_process_number': None,
+        'breakfast_included': False
+    }
+    
+    tarif_patterns = [
+        r'Prix\s+total\s+du\s+s[eé]jour\s*(?:\([^)]+\))?\s*[:\-]?\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'Prix\s+total\s*[:\-]?\s*([\d\s,\.]+)\s*(?:EUR|€)',
+        r'Total\s*[:\-]?\s*([\d\s,\.]+)\s*EUR',
+    ]
+    result['tarif'] = extract_price(email_text, tarif_patterns)
+    result['vad'] = result['tarif']
+    
+    chambre_patterns = [
+        r'\d+\.\s+([^:]+):\s*([^\n]+)',
+        r'(?:Chambre|Room)\s+([^\n:]+)',
+    ]
+    chambre_match = re.search(r'\d+\.\s+([^:]+:\s*[^\n]+)', email_text)
+    if chambre_match:
+        result['type_chambre'] = chambre_match.group(1).strip()
+        result['type_hebergement'] = result['type_chambre']
+    
+    reservation_patterns = [
+        r'Num[eé]ro\s+de\s+r[eé]servation\s*[:\-]?\s*(\d+)',
+        r'N°\s+de\s+r[eé]servation\s*[:\-]?\s*(\d+)',
+    ]
+    result['reservation_id'] = extract_text(email_text, reservation_patterns)
+    
+    hrs_process_patterns = [
+        r'N°\s+de\s+processus\s+HRS\s*[:\-]?\s*(\d+)',
+        r'processus\s+HRS\s*[:\-]?\s*(\d+)',
+    ]
+    result['hrs_process_number'] = extract_text(email_text, hrs_process_patterns)
+    
+    guest_patterns = [
+        r"Client\(?s?\)?\s+logeant\s+[àa]\s+l['\u2019]h[oô]tel\s*[:\-]?\s*([A-ZÀ-Ü]+,?\s*[A-ZÀ-Ü]+)",
+        r'([A-ZÀ-Ü]+,\s*[A-ZÀ-Ü]+)',
+    ]
+    guest = extract_text(email_text, guest_patterns)
+    if guest:
+        if ',' in guest:
+            parts = guest.split(',')
+            result['guest_name'] = f"{parts[1].strip()} {parts[0].strip()}"
+        else:
+            result['guest_name'] = guest
+    
+    date_pattern = r'Arriv[eé]e\s*/\s*D[eé]part\s*[:\-]?\s*(?:[A-Za-z]+\.)?\s*(\d{1,2}\.\d{1,2}\.\d{4})\s*[\-–]\s*(?:[A-Za-z]+\.)?\s*(\d{1,2}\.\d{1,2}\.\d{4})'
+    date_match = re.search(date_pattern, email_text, re.IGNORECASE)
+    if date_match:
+        result['dates_arrivee'] = date_match.group(1)
+        result['dates_depart'] = date_match.group(2)
+    
+    if 'petit-d[eé]jeuner inclus' in email_text.lower() or 'petit déjeuner inclus' in email_text.lower():
+        result['breakfast_included'] = True
+    
+    nights_match = re.search(r'(\d{1,2}\.\d{1,2}\.)\s*-\s*(\d{1,2}\.\d{1,2}\.)', email_text)
+    if result['dates_arrivee'] and result['dates_depart']:
+        try:
+            from datetime import datetime
+            arr = datetime.strptime(result['dates_arrivee'], '%d.%m.%Y')
+            dep = datetime.strptime(result['dates_depart'], '%d.%m.%Y')
+            nights = (dep - arr).days
+            details = f"{nights} nuit(s)"
+            if result['type_chambre']:
+                details += f" - {result['type_chambre']}"
+            if result['breakfast_included']:
+                details += " (Petit-déjeuner inclus)"
+            result['sejour_details'] = details
+        except:
+            pass
+    
+    return result
+
 PARSERS = {
     'weekendesk': parse_weekendesk,
     'booking': parse_booking,
     'expedia': parse_expedia,
     'originals': parse_originals,
     'airbnb': parse_airbnb,
+    'hrs': parse_hrs,
     'direct': parse_direct,
 }
 

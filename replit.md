@@ -8,7 +8,7 @@ Application Streamlit multi-outils pour l'Hôtel du Causse Comtal.
 Transformation des emails de réservation OTA en résumés standardisés pour le PMS.
 
 **Fonctionnalités :**
-- Détection automatique de la plateforme OTA (Weekendesk, Expedia, Booking, Airbnb, The Originals, Réservation Directe)
+- Détection automatique de la plateforme OTA (Weekendesk, Expedia, Booking, Airbnb, The Originals, HRS, Réservation Directe)
 - Extraction automatique des données : tarif, VAD/Payline, dates de séjour, type de chambre
 - Calcul automatique de la commission
 - Templates de sortie adaptés à chaque plateforme
