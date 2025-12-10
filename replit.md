@@ -34,6 +34,7 @@ Gestion des utilisateurs et des accès.
 - Modification des mots de passe
 - Gestion des droits administrateur
 - Suppression d'utilisateurs
+- Journal d'activité (logs de toutes les actions)
 
 ## Authentification
 
@@ -59,6 +60,7 @@ L'application est protégée par un système d'authentification :
 ├── cms_parser.py             # Module de parsing des données PMS
 ├── templates.py              # Templates de sortie par plateforme OTA
 ├── database.py               # Module PostgreSQL pour l'historique
+├── activity_log.py           # Module de journal d'activité
 ├── .streamlit/
 │   └── config.toml          # Configuration Streamlit
 └── replit.md                # Documentation
@@ -107,4 +109,18 @@ Date de checkin;Nom;Prénom;Mail;Plan Tarifaire;Champs Marketing;;
 
 ## Base de Données
 
-PostgreSQL avec table `summaries` pour l'historique des résumés OTA générés.
+PostgreSQL avec tables :
+- `summaries` : historique des résumés OTA générés
+- `users` : utilisateurs et authentification
+- `activity_logs` : journal d'activité
+
+## Journal d'Activité
+
+Le journal d'activité enregistre automatiquement :
+- Connexions et déconnexions
+- Ouverture des outils (OTA Helper, CMS Helper, Back Office)
+- Génération de résumés OTA
+- Transformation de données CMS
+- Création, modification et suppression d'utilisateurs
+
+Accessible uniquement aux administrateurs dans le Back Office (onglet "Journal d'activité").

@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import datetime
 from cms_parser import process_pms_file, parse_csv_data, generate_markdown_table
+from activity_log import log_activity
 
 def run():
     st.title("CMS Helper")
@@ -58,6 +59,9 @@ def run():
                 st.session_state['cms_df'] = df
                 st.session_state['cms_markdown'] = markdown_output
                 st.session_state['cms_processed'] = True
+                
+                current_user = st.session_state.get('user', {})
+                log_activity(current_user.get('id'), current_user.get('username'), 'cms_helper_generate', f"{len(df)} enregistrements traités")
                 
             except Exception as e:
                 st.error(f"Erreur lors du traitement : {str(e)}")

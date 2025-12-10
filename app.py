@@ -1,12 +1,14 @@
 import streamlit as st
 from views import ota_helper, cms_helper, backoffice
 from auth import init_users_table, verify_user, create_user, user_exists
+from activity_log import init_activity_log_table, log_activity
 
 st.set_page_config(page_title="Hôtel du Causse Comtal - Outils",
                    page_icon="🏰",
                    layout="wide")
 
 init_users_table()
+init_activity_log_table()
 
 if 'current_app' not in st.session_state:
     st.session_state.current_app = None
@@ -55,6 +57,7 @@ def show_login():
                     user = verify_user(username, password)
                     if user:
                         st.session_state.user = user
+                        log_activity(user['id'], user['username'], 'login')
                         st.rerun()
                     else:
                         st.error("Identifiants incorrects.")
@@ -71,6 +74,7 @@ def show_home():
     with col_user:
         st.markdown(f"**{st.session_state.user['username']}**")
         if st.button("Déconnexion", key="logout_btn"):
+            log_activity(st.session_state.user['id'], st.session_state.user['username'], 'logout')
             st.session_state.user = None
             st.session_state.current_app = None
             st.rerun()
@@ -102,6 +106,7 @@ def show_home():
                      use_container_width=True,
                      type="primary"):
             st.session_state.current_app = 'ota'
+            log_activity(st.session_state.user['id'], st.session_state.user['username'], 'ota_helper_open')
             st.rerun()
 
         st.markdown("""
@@ -135,6 +140,7 @@ def show_home():
                      use_container_width=True,
                      type="primary"):
             st.session_state.current_app = 'cms'
+            log_activity(st.session_state.user['id'], st.session_state.user['username'], 'cms_helper_open')
             st.rerun()
 
         st.markdown("""
@@ -169,6 +175,7 @@ def show_home():
                      use_container_width=True,
                      type="secondary"):
             st.session_state.current_app = 'backoffice'
+            log_activity(st.session_state.user['id'], st.session_state.user['username'], 'backoffice_open')
             st.rerun()
 
     st.markdown("---")
@@ -187,6 +194,7 @@ def show_app_with_nav(app_name, app_func):
     with col_user:
         st.markdown(f"**{st.session_state.user['username']}**")
         if st.button("Déconnexion", key="logout_nav"):
+            log_activity(st.session_state.user['id'], st.session_state.user['username'], 'logout')
             st.session_state.user = None
             st.session_state.current_app = None
             st.rerun()

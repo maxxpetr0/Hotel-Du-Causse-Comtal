@@ -8,6 +8,7 @@ from parsers import (
     OTA_PLATFORMS
 )
 from database import init_db, save_summary
+from activity_log import log_activity
 
 def run():
     init_db()
@@ -70,6 +71,9 @@ def run():
                 try:
                     save_summary(data, summary, receptionist_name.strip(), email_input)
                     st.session_state['saved'] = True
+                    current_user = st.session_state.get('user', {})
+                    platform_name = OTA_PLATFORMS.get(detected, {}).get('name', detected)
+                    log_activity(current_user.get('id'), current_user.get('username'), 'ota_helper_generate', f"Plateforme: {platform_name}")
                 except Exception as e:
                     st.session_state['saved'] = False
                 

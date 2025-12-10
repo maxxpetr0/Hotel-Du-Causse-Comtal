@@ -1,5 +1,6 @@
 import streamlit as st
 from auth import get_all_users, create_user, delete_user, update_user_password, toggle_admin, count_admins
+from activity_log import log_activity, get_activity_logs, get_action_label
 
 def run():
     st.title("Back Office - Gestion des Utilisateurs")
@@ -8,6 +9,15 @@ def run():
         st.error("Accès refusé. Vous devez être administrateur.")
         return
     
+    tab_users, tab_logs = st.tabs(["Utilisateurs", "Journal d'activité"])
+    
+    with tab_users:
+        show_users_management()
+    
+    with tab_logs:
+        show_activity_logs()
+
+def show_users_management():
     st.markdown("---")
     
     with st.expander("Créer un nouvel utilisateur", expanded=False):
@@ -29,6 +39,8 @@ def run():
                 else:
                     result = create_user(new_username, new_password, is_admin)
                     if result:
+                        current_user = st.session_state.get('user', {})
+                        log_activity(current_user.get('id'), current_user.get('username'), 'user_created', f"Utilisateur: {new_username}, Admin: {is_admin}")
                         st.success(f"Utilisateur '{new_username}' créé avec succès !")
                         st.rerun()
                     else:
@@ -68,6 +80,9 @@ def run():
                         btn_text = "Retirer admin" if user['is_admin'] else "Rendre admin"
                         if st.button(btn_text, key=f"admin_{user['id']}"):
                             toggle_admin(user['id'])
+                            current_user = st.session_state.get('user', {})
+                            action = "retiré admin" if user['is_admin'] else "rendu admin"
+                            log_activity(current_user.get('id'), current_user.get('username'), 'user_admin_toggled', f"Utilisateur: {user['username']} {action}")
                             st.rerun()
             
             with col4:
@@ -87,6 +102,8 @@ def run():
                         if st.form_submit_button("Enregistrer"):
                             if new_pwd and len(new_pwd) >= 4:
                                 update_user_password(user['id'], new_pwd)
+                                current_user = st.session_state.get('user', {})
+                                log_activity(current_user.get('id'), current_user.get('username'), 'user_password_changed', f"Utilisateur: {user['username']}")
                                 st.session_state[f"edit_pwd_{user['id']}"] = False
                                 st.success("Mot de passe modifié !")
                                 st.rerun()
@@ -102,7 +119,10 @@ def run():
                 col_yes, col_no = st.columns(2)
                 with col_yes:
                     if st.button("Oui, supprimer", key=f"yes_del_{user['id']}", type="primary"):
+                        deleted_username = user['username']
                         delete_user(user['id'])
+                        current_user = st.session_state.get('user', {})
+                        log_activity(current_user.get('id'), current_user.get('username'), 'user_deleted', f"Utilisateur: {deleted_username}")
                         st.session_state[f"confirm_del_{user['id']}"] = False
                         st.rerun()
                 with col_no:
@@ -111,3 +131,33 @@ def run():
                         st.rerun()
             
             st.markdown("---")
+
+def show_activity_logs():
+    st.subheader("Journal d'activité")
+    
+    logs = get_activity_logs(limit=200)
+    
+    if not logs:
+        st.info("Aucune activité enregistrée.")
+        return
+    
+    st.write(f"**{len(logs)} dernières activités**")
+    
+    for log in logs:
+        col_time, col_user, col_action, col_details = st.columns([2, 2, 2, 3])
+        
+        with col_time:
+            st.caption(log['created_at'].strftime('%d/%m/%Y %H:%M:%S'))
+        
+        with col_user:
+            st.write(f"**{log['username'] or 'Système'}**")
+        
+        with col_action:
+            action_label = get_action_label(log['action_type'])
+            st.write(action_label)
+        
+        with col_details:
+            if log['action_details']:
+                st.caption(log['action_details'])
+    
+    st.markdown("---")
