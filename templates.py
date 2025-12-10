@@ -230,9 +230,9 @@ def generate_hrs(data, receptionist_name):
     HRS
     [TYPE_CHAMBRE]
     Total : [PRIX] EUR
-    Faire Payline [PRIX] EUR
-    Du [DATE_ARRIVEE] au [DATE_DEPART]
-    Client : [NOM_CLIENT]
+    Petit-déjeuner inclus
+    Faire Payline [PRIX] EUR + PDJ + TDS
+    Encaisser Extras
     [Réceptionniste], le [DATE_DU_JOUR]
     """
     today = datetime.now().strftime("%d/%m/%Y")
@@ -250,17 +250,11 @@ def generate_hrs(data, receptionist_name):
         lines.append("Petit-déjeuner inclus")
     
     if tarif is not None:
-        lines.append(f"Faire Payline {format_price_eur(tarif)}")
+        lines.append(f"Faire Payline {format_price_eur(tarif)} + PDJ + TDS")
     else:
-        lines.append("Faire Payline [Montant non trouvé]")
+        lines.append("Faire Payline [Montant non trouvé] + PDJ + TDS")
     
-    if data.get('dates_arrivee') and data.get('dates_depart'):
-        lines.append(f"Du {data['dates_arrivee']} au {data['dates_depart']}")
-    
-    if data.get('guest_name'):
-        lines.append(f"Client : {data['guest_name']}")
-    
-    lines.append("Encaisser TDS + Extras")
+    lines.append("Encaisser Extras")
     lines.append(f"{receptionist_name}, le {today}")
     
     return "\n".join(lines)
