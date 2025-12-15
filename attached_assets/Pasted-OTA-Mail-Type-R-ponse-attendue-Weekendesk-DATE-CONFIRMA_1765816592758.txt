@@ -1,0 +1,190 @@
+OTA 	Mail Type 	Réponse attendue 
+Weekendesk 	"[DATE_CONFIRMATION] - Confirmation
+
+de réservation
+
+...
+
+Récapitulatif
+
+des activités
+
+(certaines activities peuvent être fournies par une structure
+
+externe à votre établissement)
+
+[RECAPITULATIF]
+
+Prix
+
+établissement payé par le client : 
+
+[PRIX_CLIENT] EUR 
+
+Montant
+
+payé par Weekendesk à l'établissement (TTC) : 
+
+[MONTANT_WEEKENDESK] EUR "	"Weekendesk 
+
+
+
+[TYPE_HEBERGEMENT] 
+
+
+
+Total : [VALEUR DE PRIX_CLIENT]
+
+
+
+Payline : [VALEUR DE MONTANT_WEEKENDESK]
+
+
+
+Commission : [VALEUR DE COMMISSION]
+
+
+
+[VALEUR DE RECAPITULATIF] 
+
+
+
+Encaisser TDS + Extras 
+
+
+
+[NOM_RECEPTIONNISTE], le [DATE_DU_JOUR] "
+Expedia 	"Information du client
+
+...
+
+Information de la carte de crédit
+
+Type de carte : [TYPE_CARTE]
+
+Numéro de carte : [NUMERO_CARTE]
+
+Nom du détenteur : [NOM_DETENTEUR_CARTE]
+
+...
+
+Type de chambre : [TYPE_CHAMBRE]
+
+...
+
+Prix total
+
+[PRIX_TOTAL] EUR"	"Expedia 
+
+
+
+[VALEUR DE TYPE_CHAMBRE] 
+
+
+
+[Phrase de paiement conditionnelle] 
+
+
+
+[NOM_RECEPTIONNISTE], le [DATE_DU_JOUR] "
+Réservation en Direct 	"Numéro de confirmation : [NUMERO_CONFIRMATION]
+
+Partenaire : 
+
+Numéro de confirmation du partenaire : 
+
+...
+
+Type de chambre : [TYPE_CHAMBRE]
+
+...
+
+Prix total 
+
+[PRIX_TOTAL_TTC] EUR 
+
+...
+
+Taxe de séjour
+
+[TAXE_SEJOUR] EUR"	"Réservation en Direct  
+
+
+
+[VALEUR DE TYPE_CHAMBRE] 
+
+
+
+Fixée à Encaisser la totalité ([VALEUR DE PRIX_TOTAL_TTC]) + TDS + Extras 
+
+
+
+Maxime, le [VALEUR DE DATE_DU_JOUR] "
+Keytel 	"[TYPE_CHAMBRE] : Le texte situé sur la ligne ""Chambre :"", généralement à droite (ex: ""Single confort"").
+
+[PRIX_TOTAL] : Le montant situé à la fin du document après la mention ""TOTAL A FACTURER ..."".
+
+[DATE_DU_JOUR] : La date du jour actuelle (format JJ/MM/AAAA)."	"KEYTEL 
+
+
+
+[TYPE_CHAMBRE] 
+
+
+
+Total [PRIX_TOTAL] € PDJ Inclus 
+
+
+
+Paiement Keytel 
+
+
+
+Encaisser TDS + Extras 
+
+
+
+[NOM_RECEPTIONNISTE], le [DATE_DU_JOUR] "
+Smartbox 	"Vous avez reçu une nouvelle réservation
+
+Smartbox infoinfo@serv.smartbox.com
+
+​vous​
+
+Cher partenaire,
+
+Bonne nouvelle ! Vous avez reçu une nouvelle réservation de la part de [NOM_CLIENT] effectuée avec le chèque-cadeau n° [NUMERO_CHEQUE_CADEAU] pour l'établissement [NOM_ETABLISSEMENT]. Veuillez trouver ci-dessous les détails de la réservation.
+
+Nous restons à votre disposition pour tout complément d'information.
+
+Date d'arrivée [DATE_ARRIVEE] Date de départ [DATE_DEPART] Nuit(s) [NB_NUITS] Personne(s) [NB_PERSONNES] Adresse de l'établissement [ADRESSE_ETABLISSEMENT]
+
+Gérer vos réservations >
+
+Détails de l'expérience [VALEUR DE RECAPITULATIF]
+
+Prix de l'expérience [VALEUR DE PRIX_CLIENT] Commission
+
+[VALEUR DE COMMISSION] Paiement de l'expérience [PRIX_HORS_COMMISSION]
+
+Coordonnées du client [COORDONNEES_CLIENT]
+
+Références de la réservation N° de réservation : [REF_RESERVATION] Nom du coffret : [NOM_COFFRET] Référence du coffret : [REF_COFFRET] N° du chèque-cadeau : [NUMERO_CHEQUE_CADEAU]
+
+Politique d'annulation : [POLITIQUE_ANNULATION] Informations pratiques : [INFOS_PRATIQUES]
+
+Gérer vos réservations > "	"Smartbox
+
+[TYPE_HEBERGEMENT]
+
+Prix total : [VALEUR DE PRIX_CLIENT]
+
+Prix hors commission : [PRIX_HORS_COMMISSION]
+
+Commission : [VALEUR DE COMMISSION]
+
+[VALEUR DE RECAPITULATIF]
+
+Encaisser TDS + Extras
+
+[NOM_RECEPTIONNISTE], le [DATE_DU_JOUR] "
